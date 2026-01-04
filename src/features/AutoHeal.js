@@ -4,15 +4,22 @@ import { isGameReady, inputCommands, findTeam } from '@/utils/constants.js';
 import { autoFireEnabled } from '@/features/AutoFire.js';
 
 let initialized = false;
-let lastHealTime = 0;
-const HEAL_COOLDOWN = 100;
+
+// Per-item cooldown tracking (like the old code)
+let lastHealthkitTime = 0;
+let lastBandageTime = 0;
+let lastPainkillerTime = 0;
+let lastSodaTime = 0;
+
+// Cooldown durations (in ms)
+const HEALTHKIT_COOLDOWN = 6100;
+const BANDAGE_COOLDOWN = 3100;
+const PAINKILLER_COOLDOWN = 6100;
+const SODA_COOLDOWN = 6100;
 
 let healthProp = null;
 let boostProp = null;
 let inventoryProp = null;
-let prevBoost = 100;
-let boostingActive = false;
-let lastBoostThresh = 100;
 
 function resolveProps(localData) {
   if (!localData) return;
@@ -113,6 +120,29 @@ function isHealing(player) {
   return w.includes('bandage') || w.includes('health') || w.includes('medkit') || w.includes('soda') || w.includes('pill');
 }
 
+function isReloading(player) {
+  const netData = player[translations.netData_];
+  if (!netData) return false;
+  
+  // Check if weapon is reloading
+  // Common reload-related properties to check
+  for (const key in netData) {
+    const val = netData[key];
+    if (typeof val === 'number' && key.toLowerCase().includes('reload')) {
+      return val > 0;
+    }
+  }
+  
+  // Alternative: check active weapon for reload indicator
+  const activeWeapon = netData?.[translations.activeWeapon_];
+  if (activeWeapon && typeof activeWeapon === 'string') {
+    const w = activeWeapon.toLowerCase();
+    return w.includes('reload');
+  }
+  
+  return false;
+}
+
 function isFighting(game) {
   if (autoFireEnabled) return true;
   const binds = game[translations.inputBinds_];
@@ -182,117 +212,72 @@ function autoHealTick() {
   const localData = player[translations.localData_];
   resolveProps(localData);
 
-  // If health prop not found, we can't do much. Boost prop is optional but preferred.
   if (!healthProp) return;
 
-  // 1. Combat Check
+  // --- Early Exit Checks (like old code) ---
+  
+  // Don't auto heal if already healing
+  if (isHealing(player)) return;
+
+  // Don't auto heal if weapon is reloading
+  if (isReloading(player)) return;
+
+  // Don't auto heal if fighting
   if (isFighting(game)) return;
 
-  // 2. Enemy Proximity Check
+  // Don't auto heal if moving (if movement check enabled)
+  if (ahSettings.movementCheck_) {
+    if (isMoving(game)) return;
+  }
+
+  // Don't auto heal if enemy near (if enemy check enabled)
   if (ahSettings.enemyCheck_) {
     const dist = ahSettings.enemyDistance_ || 15;
     if (isEnemyNear(game, player, dist)) return;
-  }
-
-  // 3. Movement Check
-  if (ahSettings.movementCheck_) {
-    if (isMoving(game)) return;
   }
 
   const health = getPlayerHealth(player);
   const boost = getPlayerBoost(player);
   const now = Date.now();
 
-  if (isHealing(player)) return;
-  if (now - lastHealTime < HEAL_COOLDOWN) return;
-
-  let itemToUse = null;
-
   const bandages = getInventoryCount(player, 'bandage');
   const kits = getInventoryCount(player, 'healthkit');
   const sodas = getInventoryCount(player, 'soda');
   const pills = getInventoryCount(player, 'painkiller');
 
-  // Configurable Thresholds
+  // Get thresholds from settings
   const bandageThresh = ahSettings.bandageThreshold_ || 75;
   const kitThresh = ahSettings.kitThreshold_ || 50;
-  const boostKeepMax = ahSettings.boostKeepMax_; // Checkbox "Auto Boost (Keep Max)"
-  const boostThresh = ahSettings.boostThreshold_ || 100;
+  const boostThresh = ahSettings.boostThreshold_ || 75;
 
-  // --- HEALTH LOGIC ---
-  if (health < 100) {
-    if (health < kitThresh && kits > 0) {
-      itemToUse = 'healthkit';
-    }
-    else if (health < bandageThresh && bandages > 0) {
-      itemToUse = 'bandage';
-    }
-    // Fallback logic for mid-range health
-    else if (health < 100) {
-      if (kits > 0 && health < 90 && health < kitThresh + 20) {
-        itemToUse = 'healthkit';
-      }
-      if (!itemToUse && bandages > 0 && health < bandageThresh) {
-        itemToUse = 'bandage';
-      }
-    }
+  // --- HEALTHKIT: health < kitThreshold ---
+  if (health < kitThresh && kits > 0 && now - lastHealthkitTime > HEALTHKIT_COOLDOWN) {
+    inputState.useItem_ = 'healthkit';
+    lastHealthkitTime = now;
+    return;
   }
 
-  // --- BOOST AS HEALTH-FALLBACK ---
-  // If the player has no bandages or healthkits but health is low, allow using
-  // boost items (painkiller/soda) as a fallback heal. This treats boost as
-  // a usable healing resource when conventional healing items are exhausted.
-  if (!itemToUse) {
-    const noHealItems = (bandages === 0 && kits === 0);
-    if (noHealItems && health < bandageThresh) {
-      if (pills > 0) itemToUse = 'painkiller';
-      else if (sodas > 0) itemToUse = 'soda';
-    }
+  // --- BANDAGE: health < bandageThreshold ---
+  // BUT: only use bandage if health is not in critical range (kitThresh)
+  // This ensures medkit gets priority when health is very low
+  if (health < bandageThresh && health >= kitThresh && bandages > 0 && now - lastBandageTime > BANDAGE_COOLDOWN) {
+    inputState.useItem_ = 'bandage';
+    lastBandageTime = now;
+    return;
   }
 
-  // --- BOOST LOGIC (continuous until 100%) ---
-  // When boost drops to/below threshold, continuously use boost items (painkiller/soda)
-  // until boost reaches 100%. Once at 100%, stop boosting until it drops back to/below
-  // the threshold again.
-  const healthSafe = health >= 75;
-  
-  if (!itemToUse && boostKeepMax && healthSafe) {
-    // If threshold changed, reset boosting state
-    if (boostThresh !== lastBoostThresh) {
-      boostingActive = false;
-      lastBoostThresh = boostThresh;
-    }
-    
-    // Trigger boosting when boost crosses down to/below threshold
-    const crossedDownThreshold = prevBoost > boostThresh && boost <= boostThresh;
-    if (crossedDownThreshold) {
-      boostingActive = true;
-    }
-    
-    // If actively boosting and not yet at 100%, use a boost item
-    if (boostingActive && boost < 100) {
-      // Item priority: prefer painkiller when boost < 50, otherwise soda.
-      if (boost < 50) {
-        if (pills > 0) itemToUse = 'painkiller';
-        else if (sodas > 0) itemToUse = 'soda';
-      } else {
-        if (sodas > 0) itemToUse = 'soda';
-        else if (pills > 0) itemToUse = 'painkiller';
-      }
-    }
-    
-    // Stop boosting once we reach 100%
-    if (boost >= 80) {
-      boostingActive = false;
-    }
+  // --- PAINKILLER: boost < 50 ---
+  if (boost < 50 && pills > 0 && now - lastPainkillerTime > PAINKILLER_COOLDOWN) {
+    inputState.useItem_ = 'painkiller';
+    lastPainkillerTime = now;
+    return;
   }
 
-  // update prevBoost for next tick
-  prevBoost = boost;
-
-  if (itemToUse) {
-    inputState.useItem_ = itemToUse;
-    lastHealTime = now;
+  // --- SODA: boost < boostThreshold ---
+  if (boost < boostThresh && sodas > 0 && now - lastSodaTime > SODA_COOLDOWN) {
+    inputState.useItem_ = 'soda';
+    lastSodaTime = now;
+    return;
   }
 }
 

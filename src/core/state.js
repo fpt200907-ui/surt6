@@ -50,7 +50,7 @@ export const defaultSettings = {
   },
   autoHeal_: {
     enabled_: true,
-    bandageThreshold_: 75,
+    bandageThreshold_: 85,
     kitThreshold_: 50,
     enemyCheck_: true,
     enemyDistance_: 15,

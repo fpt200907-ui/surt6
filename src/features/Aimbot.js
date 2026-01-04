@@ -880,7 +880,7 @@ function aimbotTicker() {
       const shouldAim = settings.aimbot_.blatant_ || isAiming || (settings.aimbot_.automatic_ && hasEnemyNearby);
       
       const wantsMeleeLock = settings.meleeLock_.enabled_ && 
-        (settings.aimbot_.automatic_ || isAiming);
+        (settings.aimbot_.blatant_ || settings.aimbot_.automatic_ || isAiming);
       
       // Anti-grenade: Check for nearby grenades
       const mePos = me[translations.visualPos_];
@@ -1052,9 +1052,9 @@ function aimbotTicker() {
           });
           
           // AutoAttack (surviv-cheat style): Auto-fire melee when in range
-          // Fire continuously when melee equipped and in engage distance
-          if (settings.meleeLock_.autoAttack_ && isMeleeEquipped && distanceToMeleeEnemy < MELEE_ENGAGE_DISTANCE) {
-            // Simulate continuous fire for melee
+          // Fire continuously when melee lock active and autoAttack enabled
+          if (settings.meleeLock_.autoAttack_) {
+            // Auto-fire: Queue Fire command every tick for continuous melee attack
             inputState.queuedInputs_.push(inputCommands.Fire_);
           }
           
