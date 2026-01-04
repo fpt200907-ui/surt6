@@ -10,6 +10,9 @@ const HEAL_COOLDOWN = 100;
 let healthProp = null;
 let boostProp = null;
 let inventoryProp = null;
+let prevBoost = 100;
+let boostingActive = false;
+let lastBoostThresh = 100;
 
 function resolveProps(localData) {
   if (!localData) return;
@@ -97,6 +100,7 @@ function getInventoryCount(player, item) {
   const localData = player[translations.localData_];
   if (!localData || !inventoryProp) return 0;
   const inv = localData[inventoryProp];
+  if (!inv || typeof inv !== 'object') return 0;
   return inv[item] || 0;
 }
 
@@ -213,6 +217,7 @@ function autoHealTick() {
   const bandageThresh = ahSettings.bandageThreshold_ || 75;
   const kitThresh = ahSettings.kitThreshold_ || 50;
   const boostKeepMax = ahSettings.boostKeepMax_; // Checkbox "Auto Boost (Keep Max)"
+  const boostThresh = ahSettings.boostThreshold_ || 100;
 
   // --- HEALTH LOGIC ---
   if (health < 100) {
@@ -227,32 +232,63 @@ function autoHealTick() {
       if (kits > 0 && health < 90 && health < kitThresh + 20) {
         itemToUse = 'healthkit';
       }
-      if (!itemToUse && bandages > 0 && health < 75) {
+      if (!itemToUse && bandages > 0 && health < bandageThresh) {
         itemToUse = 'bandage';
       }
     }
   }
 
-  // --- BOOST LOGIC ---
-  // If we haven't chosen a healing item yet, check for boost
-  if (!itemToUse && boostKeepMax && health >= 75) { // Only boost if health is reasonably high (priority to healing)
-    // Smart Boost Logic
-    // Check if we assume boostProp is valid. If 0, it might just be empty or undetected.
-    // But we proceed anyway.
+  // --- BOOST AS HEALTH-FALLBACK ---
+  // If the player has no bandages or healthkits but health is low, allow using
+  // boost items (painkiller/soda) as a fallback heal. This treats boost as
+  // a usable healing resource when conventional healing items are exhausted.
+  if (!itemToUse) {
+    const noHealItems = (bandages === 0 && kits === 0);
+    if (noHealItems && health < bandageThresh) {
+      if (pills > 0) itemToUse = 'painkiller';
+      else if (sodas > 0) itemToUse = 'soda';
+    }
+  }
 
-    if (boost < 100) {
-      // If boost is low (< 50), prefer pills for big boost
+  // --- BOOST LOGIC (continuous until 100%) ---
+  // When boost drops to/below threshold, continuously use boost items (painkiller/soda)
+  // until boost reaches 100%. Once at 100%, stop boosting until it drops back to/below
+  // the threshold again.
+  const healthSafe = health >= 75;
+  
+  if (!itemToUse && boostKeepMax && healthSafe) {
+    // If threshold changed, reset boosting state
+    if (boostThresh !== lastBoostThresh) {
+      boostingActive = false;
+      lastBoostThresh = boostThresh;
+    }
+    
+    // Trigger boosting when boost crosses down to/below threshold
+    const crossedDownThreshold = prevBoost > boostThresh && boost <= boostThresh;
+    if (crossedDownThreshold) {
+      boostingActive = true;
+    }
+    
+    // If actively boosting and not yet at 100%, use a boost item
+    if (boostingActive && boost < 100) {
+      // Item priority: prefer painkiller when boost < 50, otherwise soda.
       if (boost < 50) {
         if (pills > 0) itemToUse = 'painkiller';
         else if (sodas > 0) itemToUse = 'soda';
-      }
-      // If boost is high (>= 50), save pills, use sodas to top off
-      else {
+      } else {
         if (sodas > 0) itemToUse = 'soda';
-        else if (pills > 0) itemToUse = 'painkiller'; // Fallback if no sodas
+        else if (pills > 0) itemToUse = 'painkiller';
       }
     }
+    
+    // Stop boosting once we reach 100%
+    if (boost >= 80) {
+      boostingActive = false;
+    }
   }
+
+  // update prevBoost for next tick
+  prevBoost = boost;
 
   if (itemToUse) {
     inputState.useItem_ = itemToUse;

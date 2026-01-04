@@ -115,6 +115,66 @@ const Main = ({ settings, onSettingChange }) => {
       />
 
       <SectionTitle
+        icon={Icons.AutoHeal_}
+        label="Auto Heal"
+        enabled={settings.autoHeal_.enabled_}
+        onEnabledChange={(v) => onSettingChange((s) => (s.autoHeal_.enabled_ = v))}
+      />
+      <div className={`group ${!settings.autoHeal_.enabled_ ? 'hidden' : ''}`}>
+        <Slider
+          id="autoheal-bandage"
+          label="Bandage Threshold"
+          value={settings.autoHeal_.bandageThreshold_}
+          min={0}
+          max={100}
+          onChange={(v) => onSettingChange((s) => (s.autoHeal_.bandageThreshold_ = v))}
+        />
+        <Slider
+          id="autoheal-kit"
+          label="Healthkit Threshold"
+          value={settings.autoHeal_.kitThreshold_}
+          min={0}
+          max={100}
+          onChange={(v) => onSettingChange((s) => (s.autoHeal_.kitThreshold_ = v))}
+        />
+        <Slider
+          id="autoheal-boost-thresh"
+          label="Boost Threshold"
+          value={settings.autoHeal_.boostThreshold_}
+          min={0}
+          max={100}
+          onChange={(v) => onSettingChange((s) => (s.autoHeal_.boostThreshold_ = v))}
+        />
+        
+        <Checkbox
+          id="autoheal-enemy-check"
+          label="Enemy Check"
+          checked={settings.autoHeal_.enemyCheck_}
+          onChange={(v) => onSettingChange((s) => (s.autoHeal_.enemyCheck_ = v))}
+        />
+        <Slider
+          id="autoheal-enemy-dist"
+          label="Enemy Distance"
+          value={settings.autoHeal_.enemyDistance_}
+          min={5}
+          max={200}
+          onChange={(v) => onSettingChange((s) => (s.autoHeal_.enemyDistance_ = v))}
+        />
+        <Checkbox
+          id="autoheal-move-check"
+          label="Movement Check"
+          checked={settings.autoHeal_.movementCheck_}
+          onChange={(v) => onSettingChange((s) => (s.autoHeal_.movementCheck_ = v))}
+        />
+        <Checkbox
+          id="autoheal-boost-keep"
+          label="Auto Boost (Keep Max)"
+          checked={settings.autoHeal_.boostKeepMax_}
+          onChange={(v) => onSettingChange((s) => (s.autoHeal_.boostKeepMax_ = v))}
+        />
+      </div>
+
+      <SectionTitle
         icon={Icons.Desync_}
         label="Desync"
         enabled={settings.desync_.enabled_}

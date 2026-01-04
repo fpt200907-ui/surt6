@@ -48,6 +48,16 @@ export const defaultSettings = {
   autoFire_: {
     enabled_: true,
   },
+  autoHeal_: {
+    enabled_: true,
+    bandageThreshold_: 75,
+    kitThreshold_: 50,
+    enemyCheck_: true,
+    enemyDistance_: 15,
+    movementCheck_: true,
+    boostKeepMax_: true,
+    boostThreshold_: 75,
+  },
   mapESP_: {
     enabled_: false,
   },
@@ -139,6 +149,18 @@ const settingsKeys = {
   autoFire_: {
     _k: '󠄸',
     enabled_: '󠄴',
+  },
+  autoHeal_: {
+    _k: 'ah',
+    enabled_: 'a',
+    bandageThreshold_: 'b',
+    kitThreshold_: 'c',
+    enemyCheck_: 'd',
+    enemyDistance_: 'e',
+    movementCheck_: 'f',
+    boostKeepMax_: 'g',
+    boostThreshold_: 'h',
+    
   },
   mapESP_: {
     _k: '󠄹',
